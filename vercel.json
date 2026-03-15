@@ -1,0 +1,12 @@
+{
+    "functions": {
+      "app/api/queues/process-image/route.ts": {
+        "experimentalTriggers": [
+          {
+            "type": "queue/v2beta",
+            "topic": "image-processing"
+          }
+        ]
+      }
+    }
+  }
