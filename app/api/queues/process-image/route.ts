@@ -58,6 +58,8 @@ function extractJobs(body: unknown): IngestJobPayload[] {
 }
 
 export async function POST(request: Request) {
+  console.log("Queue consumer request received.", request);
+  
   const debugHeaders = {
     "content-type": request.headers.get("content-type"),
     "user-agent": request.headers.get("user-agent"),
