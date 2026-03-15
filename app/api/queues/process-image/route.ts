@@ -50,7 +50,23 @@ function extractJobs(body: unknown): IngestJobPayload[] {
 }
 
 export async function POST(request: Request) {
-  const requestBody = (await request.json()) as unknown;
+  const rawBody = await request.text();
+  if (!rawBody.trim()) {
+    console.warn("Queue consumer invoked with empty body.");
+    return Response.json({ success: true, processed: 0, skipped: "empty-body" });
+  }
+
+  let requestBody: unknown;
+  try {
+    requestBody = JSON.parse(rawBody) as unknown;
+  } catch (error) {
+    console.error("Queue consumer received invalid JSON payload.", {
+      error: error instanceof Error ? error.message : "Unknown parse error.",
+      preview: rawBody.slice(0, 200),
+    });
+    return Response.json({ success: true, processed: 0, skipped: "invalid-json" });
+  }
+
   const jobs = extractJobs(requestBody);
 
   if (jobs.length === 0) {
