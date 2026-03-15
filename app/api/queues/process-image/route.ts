@@ -13,6 +13,14 @@ type QueueEnvelope = {
 };
 
 function toJobPayload(input: unknown): IngestJobPayload | null {
+  if (typeof input === "string") {
+    try {
+      return toJobPayload(JSON.parse(input) as unknown);
+    } catch {
+      return null;
+    }
+  }
+
   if (!input || typeof input !== "object") {
     return null;
   }
@@ -50,7 +58,20 @@ function extractJobs(body: unknown): IngestJobPayload[] {
 }
 
 export async function POST(request: Request) {
+  const debugHeaders = {
+    "content-type": request.headers.get("content-type"),
+    "user-agent": request.headers.get("user-agent"),
+    "x-vercel-id": request.headers.get("x-vercel-id"),
+  };
+
   const rawBody = await request.text();
+  console.info("Queue consumer request received.", {
+    debugVersion: "2026-03-15-q1",
+    ...debugHeaders,
+    rawBodyLength: rawBody.length,
+    rawBodyPreview: rawBody.slice(0, 160),
+  });
+
   if (!rawBody.trim()) {
     console.warn("Queue consumer invoked with empty body.");
     return Response.json({ success: true, processed: 0, skipped: "empty-body" });
@@ -68,6 +89,13 @@ export async function POST(request: Request) {
   }
 
   const jobs = extractJobs(requestBody);
+  console.info("Queue consumer parsed payload.", {
+    hasRecordsArray:
+      Boolean(requestBody) &&
+      typeof requestBody === "object" &&
+      Array.isArray((requestBody as QueueEnvelope).records),
+    jobsExtracted: jobs.length,
+  });
 
   if (jobs.length === 0) {
     console.warn("Queue consumer invoked with no valid jobs.");
