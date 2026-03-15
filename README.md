@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Master Gardener Assistant
 
-## Getting Started
+An AI gardening assistant built with Next.js, Vercel Queues, and Gemini Flash.
+It accepts images from a Raspberry Pi, processes them asynchronously, and shows recommended next steps in a responsive dashboard.
 
-First, run the development server:
+## Architecture
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+1. Raspberry Pi captures a plant image.
+2. Pi sends `POST /api/ingest` with base64 image payload.
+3. Ingest route validates input and enqueues to Vercel queue topic `image-processing`.
+4. Queue consumer (`app/api/queues/process-image/route.ts`) calls Gemini for vision analysis.
+5. Structured recommendation is stored and shown on the dashboard (`app/page.tsx`).
+
+## API Endpoints
+
+### `POST /api/ingest`
+
+Queues a new image-processing job.
+
+Request JSON:
+
+```json
+{
+  "image": "<base64-image-or-data-url>",
+  "plantId": "front-yard-bed-1",
+  "notes": "Leaves look pale after heavy rain"
+}
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Headers:
+- `Content-Type: application/json`
+- `x-ingest-token: <token>` (required only if `INGEST_SHARED_TOKEN` is configured)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Response:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```json
+{
+  "success": true,
+  "message": "Image queued for processing.",
+  "jobId": "uuid",
+  "timestamp": "2026-03-15T00:00:00.000Z"
+}
+```
 
-## Learn More
+### `GET /api/recommendations`
 
-To learn more about Next.js, take a look at the following resources:
+Returns recent recommendations for dashboard or client integrations.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Environment Variables
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Copy `.env.example` to `.env.local` and set values:
 
-## Deploy on Vercel
+- `GEMINI_API_KEY`: required for model calls.
+- `GEMINI_MODEL`: optional model name, defaults to `gemini-2.0-flash`.
+- `GEMINI_ENDPOINT`: optional override for Gemini endpoint.
+- `INGEST_SHARED_TOKEN`: optional shared secret for Pi ingest auth.
+- `MAX_IMAGE_BASE64_CHARS`: optional safety limit for payload size.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Local Development
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Install dependencies and run:
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000` to view the gardening dashboard.
+
+## Raspberry Pi Script
+
+Use `pi_capture_and_send.py` to capture a camera image and queue a job.
+
+Requirements on Pi:
+- `libcamera-still` available (Raspberry Pi OS camera stack).
+- Python package `requests` installed.
+
+Example:
+
+```bash
+python3 pi_capture_and_send.py \
+  --endpoint https://your-app.vercel.app/api/ingest \
+  --plant-id tomato-bed-1 \
+  --notes "Lower leaves turning yellow" \
+  --token your_shared_token
+```
+
+The script captures an image, base64-encodes it, sends it to your endpoint, and retries on network failures with exponential backoff.
+
+## Queue Consumer Notes
+
+- `vercel.json` maps `app/api/queues/process-image/route.ts` to queue topic `image-processing` using trigger `queue/v2beta`.
+- The consumer throws on processing failures so queue retries can occur.
+- Current recommendation storage is in-memory for development; replace with persistent DB storage for production.
